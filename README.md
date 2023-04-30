@@ -6,7 +6,7 @@ This project uses git submodules. To clone the repository, use the
 following command:
 
 ```shell
-git clone --shallow --recurse-submodules --shallow-submodules
+git clone --recurse-submodules --shallow-submodules
 ```
 
 If you've already cloned the repository without recursing over the submodules,
