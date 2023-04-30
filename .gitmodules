@@ -1,0 +1,3 @@
+[submodule "exercises/exercise-three/crasm"]
+	path = exercises/exercise-three/crasm
+	url = https://github.com/colinbourassa/crasm.git
