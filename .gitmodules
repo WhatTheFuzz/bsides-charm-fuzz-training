@@ -1,3 +1,6 @@
 [submodule "exercises/exercise-three/crasm"]
 	path = exercises/exercise-three/crasm
 	url = https://github.com/colinbourassa/crasm.git
+[submodule "exercises/exercise-four/mantohtml"]
+	path = exercises/exercise-four/mantohtml
+	url = https://github.com/michaelrsweet/mantohtml.git
