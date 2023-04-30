@@ -7,6 +7,3 @@
 [submodule "exercises/exercise-five/openssl"]
 	path = exercises/exercise-five/openssl
 	url = https://github.com/openssl/openssl.git
-[submodule "exercises/exercise-seven/openssl"]
-	path = exercises/exercise-seven/openssl
-	url = https://github.com/openssl/openssl.git
