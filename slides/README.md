@@ -10,7 +10,7 @@ These things will save you time when it comes to the exercises.
 
 ```sh
 # Clone the repository (also on USB).
-$ git clone --recurse-submodules --shallow https://github.com/WhatTheFuzz/bsides-charm-training.git
+$ git clone --shallow --recurse-submodules --shallow-submodules https://github.com/WhatTheFuzz/bsides-charm-fuzz-training.git
 
 # Pull the base Docker image.
 $ docker pull aflplusplus/aflplusplus
@@ -31,7 +31,7 @@ Hello, I'm Sean Deaton. I learned to love computing in college where I initially
 
 ---
 
-## Agenda
+## Agenda & Rules
 
 First, we're going to talk about what fuzzing is and have a bit of a refresher on software bugs in C. Then we'll talk about how fuzzers work before we fuzz some real-world examples, including an assembler, a format converter, and `openssl`. Sound good?
 
@@ -51,9 +51,20 @@ The analogy that I like to use involves a bunch of monkeys in the Library of Con
 
 How does that relate to fuzzing?
 
-Similarly, fuzzing is the act of generating inputs (ie. monkeys at the keyboard) and passing that input to a program. You then observe the program and see what happens. Did the input that you created have some effect on the program? Maybe it did something different than before? Typically, people are fuzzing to find crashing input. Crashing programs are bad. Crashing programs mean that developers did something wrong. Those are the interesting cases.
+Similarly, fuzzing is the act of generating inputs (ie. monkeys at the keyboard) and passing that input to a program. You then observe the program and see what happens. Did the input that you created have some effect on the program? Maybe it did something different than before? 
+
+
+---
+### Why Fuzzing?
+
+---
+
+Typically, people are fuzzing to find crashing input. Crashing programs are bad. Crashing programs mean that developers did something wrong. Those are the interesting cases.
 
 Let's look at an example.
+
+![](media/escobar-fuzzer.JPG.jpeg)
+
 
 ---
 ## Exercise One
@@ -1015,6 +1026,7 @@ int ossl_a2ulabel(const char *in, char *out, size_t *outlen)
 	- Get the crash.
 
 ---
+Remember to modify the harness. Docker and `make` will both fail if you don't. We'll take fifteen minutes. It's going to be quite slow in the beginning. That's okay. Take a break while it does its thing.
 
 #### Docker Won't Build Until You Do!
 ```text
@@ -1025,4 +1037,182 @@ int ossl_a2ulabel(const char *in, char *out, size_t *outlen)
 
 ---
 
-#### 
+## Break
+
+---
+
+# Want to go fast?
+	* shared memory fuzzing
+	* persistent mode
+	* deferred mode
+
+Now we are going to talk about some items that you can use to speed up your fuzzing campaigns
+
+---
+# Shared Memory Fuzzing
+
+
+---
+# currently
+	```
+	int main(int argc, char ** argv) {
+		int fd;
+		char buf[BUFSIZE];
+		if (argc != 2){
+				fprintf(stderr, "Usage: exercise-one <filename>\n");
+				return EXIT_FAILURE;
+		}
+		/* Open the file. */
+		fd = open(argv[1], O_RDONLY);
+		if (fd == -1){
+				fprintf(stderr, "Could not open file %s.\n", argv[1]);
+				return EXIT_FAILURE;
+		}
+		if (read(fd, buf, BUFSIZE-1) == -1) { /* Sus. */
+				fprintf(stderr, "Could not read from file %s.\n", argv[1]);
+				return EXIT_FAILURE;
+		}
+		if (close(fd) != 0) {
+	      fprintf(stderr, "Could not close file %s.\n", argv[1]);
+	      return EXIT_FAILURE;
+	  }
+	  ...
+	}
+	```
+In exercise 2, we see an example of how the fuzzing buffer is brought into the program. It is read from `argv`, opened and then read into a local buffer. This all takes time, and AFL has the ability to directly write into the fuzzed process's memory to speed this process up
+
+---
+# Alternate implementation
+	```
+	__AFL_FUZZ_INIT();
+	
+	int main(int argc, char ** argv) {
+		char *buf = __AFL_FUZZ_TESTCASE_BUF;
+		if (argc != 2){
+				fprintf(stderr, "Usage: exercise-one <filename>\n");
+				return EXIT_FAILURE;
+		}
+		...
+	}
+	```
+
+With shared memory fuzzing, we can replace all of the code needed for opening from the test file and reading from it, and can just reference it directly in the code
+
+This also means that when you call the binary, the fuzz buffer was previously passed in as `@@`, but now AFL will directly mutate the input in `__AFL_FUZZ_TESTCASE_BUF` 
+
+--- 
+# Persistent Mode and Deferred Mode
+
+Before we talk about persistent mode and deferred mode, we need to quickly talk about the AFL fork server
+---
+# Forkserver
+	- By default, calls `fork` just prior to hitting `main` 
+	- Child processes are spawned, and mutated input is passed to the `fork`ed process
+
+The fork server is what allows AFL to spawn off all of the instances of your binary, and helps to improve the speed of instantiating the process. AFLplusplus says that this implementation	leads to a speedup of 1.5-2x over the usual method of doing `execve`, running the loader, etc etc.
+
+---
+# Deferred Mode
+	In deferred mode, we can delay the location of the forkserver
+
+---
+
+	```
+	void abc(){
+		...
+		__AFL_INIT();
+		// code you care about
+		...
+	}
+	
+	int main(){
+		...
+		abc();
+		...
+	}
+	```
+
+In deferred mode, you get to delay the place where the fork server happens. This means that all subsequent instances will be started with all of the code that comes before the call to `__AFL_INIT` having already been executed.
+
+QUESTION: can you force any issues that may occur with improper placement of the location of a call to `fork`?
+
+---
+
+# Make sure the `__AFL_INIT` is run before:
+	- Files/sockets have been opened
+	- Code that is dependent on the contents of your fuzzing input
+	- Any timers
+	- Creation of important threads/child processes
+
+- If you fork after files/sockets have been opened, you are probably creating race conditions
+
+---
+# Persistent Mode
+	In persistent mode, we are running a bit of code multiple times in a given fork
+---
+	```
+	  while (__AFL_LOOP(1000)) {
+	
+	    /* Read input data. */
+	    /* Call library code to be fuzzed. */
+	    /* Reset state. */
+	
+	  }
+	
+	  /* Exit normally. */
+	```
+
+As you see here, the intent is that within the `__AFL_LOOP`, you call the piece of code that you are interested in 1000 times before exiting the program. 
+
+QUESTION: What potential problems can you forsee with running a function multiple times when it was not intended to be used in that way?
+
+--- 
+# Persistent gotchas
+	- Calling functions that alter globals is painful
+	- Look for code to iterate over that retain the same behavior on each call
+	- each iteration of `__AFL_LOOP` will mutate `__AFL_FUZZ_TESTCASE_BUF`, but the assignment the fuzz buffer pointer should be done prior to the `__AFL_LOOP` line
+
+When you call functions whose behavior varies depending on the state of globals/modifies those globals, behavior between each loop iteration can vary and you can be left with loop iterations that are just useless
+
+--- 
+# Putting it all together
+```
+__AFL_FUZZ_INIT();
+main() {
+  // anything else here, e.g. command line arguments, initialization, etc.
+
+#ifdef __AFL_HAVE_MANUAL_CONTROL
+  __AFL_INIT();
+#endif
+  unsigned char *buf = __AFL_FUZZ_TESTCASE_BUF;  // must be after __AFL_INIT and before __AFL_LOOP!
+
+  while (__AFL_LOOP(10000)) {
+
+    int len = __AFL_FUZZ_TESTCASE_LEN;  // don't use the macro directly in a call
+                                      
+    if (len < 8) continue;  // check for a required/useful minimum input length
+
+    /* Setup function call, e.g. struct target *tmp = libtarget_init() */
+    /* Call function to be fuzzed, e.g.: */
+    target_function(buf, len);
+    /* Reset state. e.g. libtarget_free(tmp) */
+  }
+  return 0;
+}
+```
+
+--- 
+# Your turn: Exercise 6
+
+---
+	Get a better understanding for how all 3 features (shared memory fuzzing, persistent mode, and deferred mode) interact with each other
+
+The objectives for exercise 5 is to get a better understanding for how all 3 features (shared memory fuzzing, persistent mode, and deferred mode) interact with each other
+
+You can look at the example files provided in the exercise 6 to explore the interactions between the 3 features we talked about
+
+---
+# Exercise 7: Revisiting Exercise 5
+	Try and apply the stuff we learned in the previous activity and try to speed up the harness we created
+
+Seeing as we just learned some new stuff, let's see if we can improve on our harness for Exercise 5
