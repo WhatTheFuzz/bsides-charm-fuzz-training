@@ -4,3 +4,6 @@
 [submodule "exercises/exercise-four/mantohtml"]
 	path = exercises/exercise-four/mantohtml
 	url = https://github.com/michaelrsweet/mantohtml.git
+[submodule "exercises/exercise-five/openssl"]
+	path = exercises/exercise-five/openssl
+	url = https://github.com/openssl/openssl.git
